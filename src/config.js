@@ -31,6 +31,8 @@ export const DEFAULTS = {
     'Thank you {name}! 🥳 Really appreciate the wishes!',
   ],
   groupReplies: ['Thank you {name}! 😊🎂'],
+  replyImage: '',
+  catchUp: { enabled: false, lookbackHours: 72, maxReplies: 30 },
   pairingPhoneNumber: '',
   web: { enabled: true, host: '127.0.0.1', port: 3000, password: '' },
 };
@@ -39,7 +41,12 @@ let cached = null;
 let cachedMtime = 0;
 
 function merge(raw) {
-  return { ...DEFAULTS, ...raw, web: { ...DEFAULTS.web, ...(raw.web || {}) } };
+  return {
+    ...DEFAULTS,
+    ...raw,
+    catchUp: { ...DEFAULTS.catchUp, ...(raw.catchUp || {}) },
+    web: { ...DEFAULTS.web, ...(raw.web || {}) },
+  };
 }
 
 export function validate(cfg) {
@@ -49,6 +56,8 @@ export function validate(cfg) {
   if (!Array.isArray(cfg.replyDelaySeconds) || cfg.replyDelaySeconds.length !== 2) {
     errors.push('replyDelaySeconds must be [min, max]');
   }
+  if (!(cfg.catchUp.lookbackHours > 0)) errors.push('catchUp.lookbackHours must be a positive number');
+  if (!(cfg.catchUp.maxReplies >= 0)) errors.push('catchUp.maxReplies must be 0 or more');
   try {
     new Intl.DateTimeFormat('en-CA', { timeZone: cfg.timezone });
   } catch {

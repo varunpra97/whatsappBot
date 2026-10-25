@@ -5,7 +5,8 @@ import { DATA_DIR } from './config.js';
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
 const MAX_LOG = 200;
 
-let state = { replied: {}, log: [], totalReplies: 0 };
+let state = { replied: {}, lastOutgoing: {}, log: [], totalReplies: 0 };
+let saveTimer = null;
 
 export function loadState() {
   try {
@@ -35,6 +36,26 @@ export function recordReply({ chatJid, today, name, text, reply, isGroup }) {
   // Drop dedupe entries from previous days so the file stays small.
   for (const [jid, day] of Object.entries(state.replied)) if (day !== today) delete state.replied[jid];
   save();
+}
+
+/** Timestamp (ms) of the last message you sent in a chat, or 0. */
+export function lastOutgoing(chatJid) {
+  return state.lastOutgoing[chatJid] || 0;
+}
+
+export function recordOutgoing(chatJid, ts) {
+  if (!ts || ts <= lastOutgoing(chatJid)) return;
+  state.lastOutgoing[chatJid] = ts;
+  // History sync can report thousands of messages; batch the disk writes.
+  if (!saveTimer) {
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      const cutoff = Date.now() - 30 * 86400000;
+      for (const [jid, t] of Object.entries(state.lastOutgoing)) if (t < cutoff) delete state.lastOutgoing[jid];
+      save();
+    }, 5000);
+    saveTimer.unref?.();
+  }
 }
 
 export function getState() {

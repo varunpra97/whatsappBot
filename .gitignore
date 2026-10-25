@@ -3,3 +3,4 @@ auth/
 data/
 config.json
 *.log
+media/

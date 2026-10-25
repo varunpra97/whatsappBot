@@ -28,6 +28,14 @@
     "Thank you {name}! 😊🎂"
   ],
 
+  "replyImage": "",
+
+  "catchUp": {
+    "enabled": false,
+    "lookbackHours": 72,
+    "maxReplies": 30
+  },
+
   "pairingPhoneNumber": "",
 
   "web": {

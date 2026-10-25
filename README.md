@@ -74,9 +74,35 @@ Edit the config in the dashboard, or with `sudo nano /opt/whatsapp-bot/config.js
 | `onlyNumbers` | `[]` | If non-empty, reply only to these numbers. |
 | `replies` | 3 templates | Private-chat replies; `{name}` = sender's first name, `{fullName}` = their WhatsApp name. |
 | `groupReplies` | 1 template | Group replies (sent as a quoted reply). |
+| `replyImage` | `""` | Image to send in 1:1 chats, with the chosen reply as its caption, e.g. `"media/thank-you.jpg"` (relative to the bot folder) or an absolute path. Falls back to text if the file is missing. |
+| `catchUp.enabled` | `false` | Also answer older wishes you haven't replied to (see below). |
+| `catchUp.lookbackHours` | `72` | How far back catch-up looks. |
+| `catchUp.maxReplies` | `30` | Most old wishes answered per run, so a backlog doesn't go out all at once. |
 | `pairingPhoneNumber` | `""` | Link by pairing code instead of QR. |
 | `web.enabled` / `web.port` | `true` / `3000` | Dashboard. Disabled until `web.password` is set. |
 | `web.host` | `"127.0.0.1"` | Keep this, and reach the dashboard via an SSH tunnel. Use `"0.0.0.0"` only behind HTTPS (the dashboard uses Basic auth). |
+
+## Replying with an image
+
+Put the image in a `media` folder inside the bot folder (it's git-ignored) and point the config at it:
+
+```bash
+mkdir -p media && cp ~/Downloads/thank-you.jpg media/
+```
+```json
+"replyImage": "media/thank-you.jpg",
+```
+
+1:1 chats then get the image with one of your `replies` as the caption. To send the image with no text, use `"replies": [""]`. Group replies stay text-only.
+
+## Answering older wishes (catch-up)
+
+With `"catchUp": { "enabled": true }` the bot also answers wishes from the last `lookbackHours` that nobody replied to:
+
+- **Wishes that arrived while the bot was off** are delivered when it reconnects and get answered.
+- **Chat history from before the bot was linked:** WhatsApp sends recent history only once, at the moment you link. To scan it, enable catch-up first and then link (or re-link: stop the bot, `rm -rf auth`, start it and scan again).
+
+A wish is skipped if you have already sent anything in that chat after it, so wishes you answered by hand don't get a second reply. Old wishes are answered one at a time, with the normal `replyDelaySeconds` gap between them; new wishes go first.
 
 ## Useful commands
 
