@@ -251,22 +251,29 @@ function scanHistory(messages, { quiet = false } = {}) {
     .filter((m) => !m.key.fromMe && m.message)
     .sort((a, b) => tsOf(a) - tsOf(b));
   const tally = {};
+  const leftOut = [];
   for (const msg of candidates) {
     const text = messageText(msg.message);
+    // Only birthday wishes are worth reporting; history also holds thousands of ordinary messages.
+    if (!isBirthdayWish(text, cfg)) continue;
     let outcome = skipReason(msg, cfg, text);
     if (!outcome && !cfg.catchUp.enabled) outcome = 'not answered because catchUp is off';
     if (!outcome) {
-      if (catchUpQueued >= cfg.catchUp.maxReplies) outcome = `over catchUp.maxReplies (${cfg.catchUp.maxReplies})`;
+      if (catchUpQueued >= cfg.catchUp.maxReplies) {
+        outcome = `over catchUp.maxReplies (${cfg.catchUp.maxReplies})`;
+        leftOut.push(`${msg.pushName || 'unknown'} (+${senderOf(msg)})`);
+      }
       else if (considerMessage(msg, 'history')) {
         catchUpQueued += 1;
         outcome = 'queued for reply';
       } else outcome = 'already queued';
     }
-    if (outcome !== 'not a birthday wish' && outcome !== 'too old') tally[outcome] = (tally[outcome] || 0) + 1;
+    if (outcome !== 'too old') tally[outcome] = (tally[outcome] || 0) + 1;
   }
+  if (leftOut.length) console.log(`[bot] not answered (over catchUp.maxReplies), reply by hand: ${leftOut.join(', ')}`);
   if (quiet) return;
   const details = Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(', ');
-  console.log(`[bot] chat history received: ${messages.length} messages${details ? `; recent birthday wishes: ${details}` : '; no recent birthday wishes to answer'}`);
+  console.log(`[bot] chat history received: ${messages.length} messages; birthday wishes in it: ${details || 'none to answer'}`);
 }
 
 // 'notify' = arrived now (including messages queued while offline); 'append' = synced from your phone.
