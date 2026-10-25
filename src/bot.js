@@ -33,6 +33,7 @@ export const status = {
 };
 
 let sock = null;
+let linkedThisRun = false; // history sync only happens on a fresh link
 let reconnectAttempts = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -242,21 +243,30 @@ async function sendReply({ msg, text, key, source }) {
 }
 
 /** Looks through chat history WhatsApp sends when the device links, for wishes that were never answered. */
-function scanHistory(messages) {
+function scanHistory(messages, { quiet = false } = {}) {
   // Note every message we sent first, so wishes already answered in history are skipped.
   messages.forEach(noteOutgoing);
   const cfg = getConfig();
-  if (!cfg.catchUp.enabled) return;
   const candidates = messages
     .filter((m) => !m.key.fromMe && m.message)
     .sort((a, b) => tsOf(a) - tsOf(b));
+  const tally = {};
   for (const msg of candidates) {
-    if (catchUpQueued >= cfg.catchUp.maxReplies) {
-      console.log(`[bot] catch-up limit (${cfg.catchUp.maxReplies}) reached; skipping remaining old wishes`);
-      break;
+    const text = messageText(msg.message);
+    let outcome = skipReason(msg, cfg, text);
+    if (!outcome && !cfg.catchUp.enabled) outcome = 'not answered because catchUp is off';
+    if (!outcome) {
+      if (catchUpQueued >= cfg.catchUp.maxReplies) outcome = `over catchUp.maxReplies (${cfg.catchUp.maxReplies})`;
+      else if (considerMessage(msg, 'history')) {
+        catchUpQueued += 1;
+        outcome = 'queued for reply';
+      } else outcome = 'already queued';
     }
-    if (considerMessage(msg, 'history')) catchUpQueued += 1;
+    if (outcome !== 'not a birthday wish' && outcome !== 'too old') tally[outcome] = (tally[outcome] || 0) + 1;
   }
+  if (quiet) return;
+  const details = Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(', ');
+  console.log(`[bot] chat history received: ${messages.length} messages${details ? `; recent birthday wishes: ${details}` : '; no recent birthday wishes to answer'}`);
 }
 
 // 'notify' = arrived now (including messages queued while offline); 'append' = synced from your phone.
@@ -264,7 +274,7 @@ function handleUpsert(messages, type) {
   for (const msg of messages) {
     noteOutgoing(msg);
     if (type === 'notify') considerMessage(msg, 'live');
-    else if (type === 'append' && !msg.key.fromMe) scanHistory([msg]);
+    else if (type === 'append' && !msg.key.fromMe) scanHistory([msg], { quiet: true });
   }
 }
 
@@ -295,6 +305,7 @@ export async function startBot() {
     const cfg = getConfig();
 
     if (qr) {
+      linkedThisRun = true;
       status.connection = 'waiting_for_link';
       const phone = String(cfg.pairingPhoneNumber || '').replace(/\D/g, '');
       if (phone && !state.creds.registered) {
@@ -324,6 +335,9 @@ export async function startBot() {
       status.lastError = null;
       status.me = { id: jidNormalizedUser(sock.user.id), name: sock.user.name || '' };
       console.log(`[bot] connected as ${status.me.name} (${digits(status.me.id)})`);
+      if (cfg.catchUp.enabled && !linkedThisRun) {
+        console.log('[bot] catch-up: WhatsApp only sends older chat history right after linking; re-link to scan earlier chats');
+      }
     }
 
     if (connection === 'close') {
