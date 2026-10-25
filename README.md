@@ -10,7 +10,7 @@ It links to the WhatsApp app on your phone (iPhone or Android) as a **Linked Dev
 - Replies with a random template that uses the sender's name (`{name}`), after a human-like delay with a "typing…" indicator.
 - Optional ❤️ reaction and read receipt on each wish.
 - Replies **at most once per person per day**.
-- In groups it only replies when the wish is for **you**: you're @mentioned, your message is quoted, or one of `myNames` appears. If someone else in the group has a birthday, the bot stays quiet.
+- Personal chats only by default. If you turn on group replies, it only replies when the wish is for **you**: you're @mentioned, your message is quoted, or one of `myNames` appears. If someone else in the group has a birthday, the bot stays quiet.
 - Optional birthday window, so it only replies around your birthday.
 - Web dashboard to link WhatsApp (QR code or pairing code), edit the config, and see recent replies.
 - Config changes apply live, with no restart.
@@ -60,7 +60,8 @@ Edit the config in the dashboard, or with `sudo nano /opt/whatsapp-bot/config.js
 | `birthday` | `""` | Your birthday as `"MM-DD"`. Empty means reply to wishes on any day. |
 | `activeWindowDays` | `2` | Reply only within ± this many days of `birthday`. |
 | `timezone` | `"UTC"` | IANA timezone, e.g. `"Asia/Kolkata"`, used for the birthday window and once-per-day. |
-| `replyInPrivate` / `replyInGroups` | `true` | Where to reply. |
+| `replyInPrivate` | `true` | Reply to wishes in personal (1-to-1) chats. |
+| `replyInGroups` | `false` | Reply to wishes in group chats. |
 | `groupRequireMention` | `true` | In groups, only reply to wishes addressed to you (see above). |
 | `oncePerChatPerDay` | `true` | One reply per person per day. |
 | `replyDelaySeconds` | `[5, 30]` | Random delay range before replying. |

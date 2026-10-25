@@ -6,7 +6,7 @@
   "timezone": "Asia/Kolkata",
 
   "replyInPrivate": true,
-  "replyInGroups": true,
+  "replyInGroups": false,
   "groupRequireMention": true,
   "oncePerChatPerDay": true,
   "replyDelaySeconds": [5, 30],

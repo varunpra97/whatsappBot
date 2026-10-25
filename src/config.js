@@ -14,7 +14,7 @@ export const DEFAULTS = {
   activeWindowDays: 2,
   timezone: 'UTC',
   replyInPrivate: true,
-  replyInGroups: true,
+  replyInGroups: false,
   groupRequireMention: true,
   oncePerChatPerDay: true,
   replyDelaySeconds: [5, 30],
