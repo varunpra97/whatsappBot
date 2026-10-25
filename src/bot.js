@@ -154,7 +154,8 @@ export async function startBot() {
     version,
     auth: state,
     logger,
-    browser: Browsers.ubuntu('Birthday Bot'),
+    // Present as a standard WhatsApp Web session; unusual device names can be rejected when linking.
+    browser: Browsers.appropriate('Chrome'),
     markOnlineOnConnect: false, // keep phone notifications working
     syncFullHistory: false,
   });
