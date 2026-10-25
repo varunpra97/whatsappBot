@@ -114,6 +114,8 @@ sudo systemctl restart whatsapp-bot     # restart
 sudo systemctl stop whatsapp-bot        # pause the bot
 ```
 
+WhatsApp library logs are hidden by default. To see them when debugging, start with `BAILEYS_LOG_LEVEL=warn npm start`. Occasional `failed to decrypt message` / `Bad MAC` entries there are normal: the library asks the phone to resend and recovers.
+
 ## Docker (alternative)
 
 ```bash

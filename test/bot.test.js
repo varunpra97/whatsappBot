@@ -128,3 +128,26 @@ test('onlyTodaysWishes skips wishes from yesterday', async () => {
   await bot._test.idle();
   assert.equal(sent.length, 1);
 });
+
+test('matches onlyNumbers for chats addressed by @lid', async () => {
+  sent = [];
+  writeConfig({ onlyNumbers: ['919000000001'] });
+  const msg = wish('x');
+  msg.key.remoteJid = '123456789012345@lid';
+  msg.key.remoteJidAlt = '919000000001@s.whatsapp.net';
+  bot._test.upsert([msg], 'notify');
+  await bot._test.idle();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].jid, '123456789012345@lid');
+});
+
+test('a manual reply under the phone-number address counts for the @lid chat', async () => {
+  sent = [];
+  writeConfig({ catchUp: { enabled: true, lookbackHours: 72 } });
+  const msg = wish('x', 3);
+  msg.key.remoteJid = '223456789012345@lid';
+  msg.key.remoteJidAlt = '919000000002@s.whatsapp.net';
+  bot._test.history([msg, mine('919000000002', 2)]);
+  await bot._test.idle();
+  assert.equal(sent.length, 0);
+});

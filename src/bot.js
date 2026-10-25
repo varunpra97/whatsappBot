@@ -20,6 +20,8 @@ import { isBirthdayWish, mentionsName } from './detector.js';
 import { alreadyRepliedToday, lastOutgoing, recordOutgoing, recordReply } from './state.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'warn' });
+// The WhatsApp library logs routine decryption retries and timeouts as errors; hide them unless debugging.
+const libLogger = pino({ level: process.env.BAILEYS_LOG_LEVEL || 'fatal' });
 
 /** Live connection status, read by the web dashboard. */
 export const status = {
@@ -68,9 +70,22 @@ export function fillTemplate(template, vars) {
   return template.replace(/\{(\w+)\}/g, (all, key) => (key in vars ? vars[key] : all));
 }
 
+const isPnUser = (jid) => typeof jid === 'string' && jid.endsWith('@s.whatsapp.net');
+
+/** Phone-number JID for the sender when WhatsApp provides one (chats may be addressed by @lid). */
+function senderJidOf(msg) {
+  const { remoteJid, participant, participantAlt, participantPn, remoteJidAlt, senderPn } = msg.key;
+  if (isJidGroup(remoteJid)) return [participantAlt, participantPn, participant].find(isPnUser) || participant;
+  return [remoteJidAlt, senderPn, remoteJid].find(isPnUser) || remoteJid;
+}
+
 function senderOf(msg) {
-  const jid = msg.key.remoteJid;
-  return digits(isJidGroup(jid) ? msg.key.participantPn || msg.key.participant : msg.key.senderPn || jid);
+  return digits(senderJidOf(msg));
+}
+
+/** Both addresses a 1:1 chat can appear under (@lid and phone number). */
+function chatJidsOf(msg) {
+  return [msg.key.remoteJid, msg.key.remoteJidAlt].filter(Boolean);
 }
 
 function dedupeKeyOf(msg) {
@@ -93,7 +108,7 @@ function noteOutgoing(msg) {
   // Reactions, receipts and other protocol messages don't count as a reply.
   if (!m || m.reactionMessage || m.protocolMessage || m.senderKeyDistributionMessage) return;
   if (!messageText(msg.message) && !m.imageMessage && !m.videoMessage && !m.audioMessage && !m.stickerMessage) return;
-  recordOutgoing(msg.key.remoteJid, tsOf(msg));
+  for (const jid of chatJidsOf(msg)) recordOutgoing(jid, tsOf(msg));
 }
 
 /** Returns a reason string when the message should be skipped, otherwise null. */
@@ -125,7 +140,7 @@ function skipReason(msg, cfg, text) {
     if (!mentioned && !quotedMe && !mentionsName(text, cfg.myNames)) return 'group wish not addressed to me';
   }
 
-  if (!group && ts && lastOutgoing(jid) >= ts) return 'already answered in this chat';
+  if (!group && ts && Math.max(...chatJidsOf(msg).map(lastOutgoing)) >= ts) return 'already answered in this chat';
   if (cfg.oncePerChatPerDay && alreadyRepliedToday(dedupeKeyOf(msg), todayIn(cfg.timezone))) {
     return 'already replied today';
   }
@@ -222,7 +237,7 @@ async function sendReply({ msg, text, key, source }) {
   await sock.sendMessage(jid, content, group ? { quoted: msg } : undefined);
 
   recordReply({ chatJid: key, today: todayIn(cfg.timezone), name: msg.pushName || senderOf(msg), text, reply: image ? `[image] ${reply}` : reply, isGroup: !!group });
-  recordOutgoing(jid, Date.now());
+  for (const j of chatJidsOf(msg)) recordOutgoing(j, Date.now());
   console.log(`[bot] replied to ${msg.pushName || senderOf(msg)}: ${image ? '[image] ' : ''}${reply}`);
 }
 
@@ -262,7 +277,10 @@ export async function startBot() {
   sock = makeWASocket({
     version,
     auth: state,
-    logger,
+    logger: libLogger,
+    // Don't decrypt chats the bot never answers; avoids session errors for groups and status updates.
+    shouldIgnoreJid: (jid) =>
+      isJidStatusBroadcast(jid) || isJidNewsletter(jid) || (isJidGroup(jid) && !getConfig().replyInGroups),
     // Present as a standard WhatsApp Web session; unusual device names can be rejected when linking.
     browser: Browsers.appropriate('Chrome'),
     markOnlineOnConnect: false, // keep phone notifications working
