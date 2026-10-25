@@ -190,3 +190,15 @@ test('saved 1:1 messages can be re-checked later with improved detection', async
   await bot._test.idle();
   assert.equal(sent.length, 1);
 });
+
+test('a history scan is not held up by slow id lookups', async () => {
+  sent = [];
+  writeConfig({ catchUp: { enabled: true, lookbackHours: 24 } });
+  fakeSock.signalRepository = { lidMapping: { getPNForLID: () => new Promise(() => {}), getLIDForPN: () => new Promise(() => {}) } };
+  const started = Date.now();
+  await bot._test.history([wish('919000000005', 1), wish('919000000006', 1), wish('919000000007', 1)]);
+  assert.ok(Date.now() - started < 5000, 'scan finished quickly');
+  await bot._test.idle();
+  assert.equal(sent.length, 3);
+  delete fakeSock.signalRepository;
+});

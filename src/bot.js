@@ -95,6 +95,11 @@ function linkAliases(a, b) {
   for (const jid of merged) aliases.set(jid, merged);
 }
 
+// Unknown mappings are fetched from WhatsApp's servers, which can stall for a minute during the initial sync.
+const LOOKUP_TIMEOUT_MS = 2000;
+const withTimeout = (promise) =>
+  Promise.race([promise, new Promise((resolve) => setTimeout(resolve, LOOKUP_TIMEOUT_MS, null).unref?.())]);
+
 /** Looks up the other id for a 1:1 chat in WhatsApp's lid/phone mapping. */
 async function resolveAliases(msg) {
   const { remoteJid, remoteJidAlt } = msg.key;
@@ -107,10 +112,10 @@ async function resolveAliases(msg) {
     const user = jidNormalizedUser(jid);
     try {
       if (isLidUser(user)) {
-        const pn = await store.getPNForLID(user);
+        const pn = await withTimeout(store.getPNForLID(user));
         if (pn) linkAliases(user, jidNormalizedUser(pn));
       } else if (isPnUser(user)) {
-        const lid = await store.getLIDForPN(user);
+        const lid = await withTimeout(store.getLIDForPN(user));
         if (lid) linkAliases(user, jidNormalizedUser(lid));
       }
     } catch (err) {
@@ -294,15 +299,18 @@ async function scanHistory(messages, { quiet = false, label = 'chat history rece
   const candidates = messages
     .filter((m) => !m.key.fromMe && m.message)
     .sort((a, b) => tsOf(a) - tsOf(b));
+  for (const msg of candidates) {
+    if (!isJidGroup(msg.key.remoteJid)) rememberIncoming(msg, messageText(msg.message));
+  }
+  // Only birthday wishes are worth reporting; history also holds thousands of ordinary messages.
+  const wishes = candidates.filter((m) => !isJidGroup(m.key.remoteJid) && isBirthdayWish(messageText(m.message), cfg));
+  await Promise.all(wishes.map(resolveAliases));
   const tally = {};
   const leftOut = [];
   const skipped = [];
   for (const msg of candidates) {
     const text = messageText(msg.message);
-    if (!isJidGroup(msg.key.remoteJid)) rememberIncoming(msg, text);
-    // Only birthday wishes are worth reporting; history also holds thousands of ordinary messages.
     if (!isBirthdayWish(text, cfg)) continue;
-    await resolveAliases(msg);
     let outcome = skipReason(msg, cfg, text);
     if (!outcome && !cfg.catchUp.enabled) outcome = 'not answered because catchUp is off';
     if (!outcome) {
