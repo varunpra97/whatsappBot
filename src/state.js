@@ -28,10 +28,10 @@ export function alreadyRepliedToday(chatJid, today) {
   return state.replied[chatJid] === today;
 }
 
-export function recordReply({ chatJid, today, name, text, reply, isGroup }) {
-  state.replied[chatJid] = today;
+export function recordReply({ chatJids, today, name, text, reply, isGroup }) {
+  for (const jid of chatJids) state.replied[jid] = today;
   state.totalReplies += 1;
-  state.log.unshift({ at: new Date().toISOString(), chat: chatJid, name, text, reply, isGroup });
+  state.log.unshift({ at: new Date().toISOString(), chat: chatJids[0], name, text, reply, isGroup });
   state.log.length = Math.min(state.log.length, MAX_LOG);
   // Drop dedupe entries from previous days so the file stays small.
   for (const [jid, day] of Object.entries(state.replied)) if (day !== today) delete state.replied[jid];

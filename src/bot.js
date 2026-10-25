@@ -11,6 +11,7 @@ import makeWASocket, {
   isJidGroup,
   isJidNewsletter,
   isJidStatusBroadcast,
+  isLidUser,
   jidNormalizedUser,
   normalizeMessageContent,
   useMultiFileAuthState,
@@ -84,14 +85,56 @@ function senderOf(msg) {
   return digits(senderJidOf(msg));
 }
 
-/** Both addresses a 1:1 chat can appear under (@lid and phone number). */
-function chatJidsOf(msg) {
-  return [msg.key.remoteJid, msg.key.remoteJidAlt].filter(Boolean);
+// WhatsApp can address the same person by phone number or by an anonymous @lid id.
+// Known pairs are linked here so a reply recorded under one id also counts for the other.
+const aliases = new Map(); // jid -> Set of jids for the same person
+
+function linkAliases(a, b) {
+  if (!a || !b || a === b) return;
+  const merged = new Set([a, b, ...(aliases.get(a) || []), ...(aliases.get(b) || [])]);
+  for (const jid of merged) aliases.set(jid, merged);
 }
 
-function dedupeKeyOf(msg) {
+/** Looks up the other id for a 1:1 chat in WhatsApp's lid/phone mapping. */
+async function resolveAliases(msg) {
+  const { remoteJid, remoteJidAlt } = msg.key;
+  if (!remoteJid || isJidGroup(remoteJid)) return;
+  linkAliases(remoteJid, remoteJidAlt);
+  const store = sock?.signalRepository?.lidMapping;
+  if (!store) return;
+  for (const jid of [remoteJid, remoteJidAlt]) {
+    if (!jid) continue;
+    const user = jidNormalizedUser(jid);
+    try {
+      if (isLidUser(user)) {
+        const pn = await store.getPNForLID(user);
+        if (pn) linkAliases(user, jidNormalizedUser(pn));
+      } else if (isPnUser(user)) {
+        const lid = await store.getLIDForPN(user);
+        if (lid) linkAliases(user, jidNormalizedUser(lid));
+      }
+    } catch (err) {
+      logger.debug({ jid, err: err.message }, 'lid mapping lookup failed');
+    }
+  }
+}
+
+/** Every id a 1:1 chat is known under (@lid and phone number). */
+function chatJidsOf(msg) {
+  const ids = new Set();
+  for (const jid of [msg.key.remoteJid, msg.key.remoteJidAlt]) {
+    if (!jid) continue;
+    ids.add(jid);
+    ids.add(jidNormalizedUser(jid));
+    for (const alias of aliases.get(jid) || aliases.get(jidNormalizedUser(jid)) || []) ids.add(alias);
+  }
+  return [...ids];
+}
+
+/** Keys used for once-per-day and in-queue de-duplication. */
+function dedupeKeysOf(msg) {
   const jid = msg.key.remoteJid;
-  return isJidGroup(jid) ? `${jid}/${senderOf(msg)}` : jid;
+  return isJidGroup(jid) ? [`${jid}/${senderOf(msg)}`] : chatJidsOf(msg);
 }
 
 const tsOf = (msg) => Number(msg.messageTimestamp || 0) * 1000;
@@ -142,7 +185,8 @@ function skipReason(msg, cfg, text) {
   }
 
   if (!group && ts && Math.max(...chatJidsOf(msg).map(lastOutgoing)) >= ts) return 'already answered in this chat';
-  if (cfg.oncePerChatPerDay && alreadyRepliedToday(dedupeKeyOf(msg), todayIn(cfg.timezone))) {
+  const today = todayIn(cfg.timezone);
+  if (cfg.oncePerChatPerDay && dedupeKeysOf(msg).some((k) => alreadyRepliedToday(k, today))) {
     return 'already replied today';
   }
   return null;
@@ -167,10 +211,10 @@ function considerMessage(msg, source) {
     }
     return false;
   }
-  const key = dedupeKeyOf(msg);
-  if (pending.has(key)) return false; // a burst of wishes from one person gets one reply
-  pending.add(key);
-  queue.push({ msg, text, key, source });
+  const keys = dedupeKeysOf(msg);
+  if (keys.some((k) => pending.has(k))) return false; // a burst of wishes from one person gets one reply
+  keys.forEach((k) => pending.add(k));
+  queue.push({ msg, text, keys, source });
   queue.sort((a, b) => (a.source === 'live' ? 0 : 1) - (b.source === 'live' ? 0 : 1));
   console.log(`[bot] birthday wish from ${msg.pushName || senderOf(msg)} (${source}); queued, ${queue.length} waiting`);
   drain();
@@ -188,7 +232,7 @@ async function drain() {
       } catch (err) {
         console.error('[bot] failed to reply:', err.message);
       } finally {
-        pending.delete(item.key);
+        item.keys.forEach((k) => pending.delete(k));
       }
     }
   } finally {
@@ -206,7 +250,7 @@ function replyImagePath(cfg) {
   return file;
 }
 
-async function sendReply({ msg, text, key, source }) {
+async function sendReply({ msg, text, source }) {
   let cfg = getConfig();
   const jid = msg.key.remoteJid;
   const [min, max] = cfg.replyDelaySeconds;
@@ -237,13 +281,13 @@ async function sendReply({ msg, text, key, source }) {
   const content = image ? { image: fs.readFileSync(image), caption: reply || undefined } : { text: reply };
   await sock.sendMessage(jid, content, group ? { quoted: msg } : undefined);
 
-  recordReply({ chatJid: key, today: todayIn(cfg.timezone), name: msg.pushName || senderOf(msg), text, reply: image ? `[image] ${reply}` : reply, isGroup: !!group });
+  recordReply({ chatJids: dedupeKeysOf(msg), today: todayIn(cfg.timezone), name: msg.pushName || senderOf(msg), text, reply: image ? `[image] ${reply}` : reply, isGroup: !!group });
   for (const j of chatJidsOf(msg)) recordOutgoing(j, Date.now());
   console.log(`[bot] replied to ${msg.pushName || senderOf(msg)}: ${image ? '[image] ' : ''}${reply}`);
 }
 
 /** Looks through chat history WhatsApp sends when the device links, for wishes that were never answered. */
-function scanHistory(messages, { quiet = false } = {}) {
+async function scanHistory(messages, { quiet = false } = {}) {
   // Note every message we sent first, so wishes already answered in history are skipped.
   messages.forEach(noteOutgoing);
   const cfg = getConfig();
@@ -256,6 +300,7 @@ function scanHistory(messages, { quiet = false } = {}) {
     const text = messageText(msg.message);
     // Only birthday wishes are worth reporting; history also holds thousands of ordinary messages.
     if (!isBirthdayWish(text, cfg)) continue;
+    await resolveAliases(msg);
     let outcome = skipReason(msg, cfg, text);
     if (!outcome && !cfg.catchUp.enabled) outcome = 'not answered because catchUp is off';
     if (!outcome) {
@@ -277,11 +322,13 @@ function scanHistory(messages, { quiet = false } = {}) {
 }
 
 // 'notify' = arrived now (including messages queued while offline); 'append' = synced from your phone.
-function handleUpsert(messages, type) {
+async function handleUpsert(messages, type) {
   for (const msg of messages) {
     noteOutgoing(msg);
-    if (type === 'notify') considerMessage(msg, 'live');
-    else if (type === 'append' && !msg.key.fromMe) scanHistory([msg], { quiet: true });
+    if (type === 'notify') {
+      if (!msg.key.fromMe && isBirthdayWish(messageText(msg.message), getConfig())) await resolveAliases(msg);
+      considerMessage(msg, 'live');
+    } else if (type === 'append' && !msg.key.fromMe) await scanHistory([msg], { quiet: true });
   }
 }
 
@@ -364,10 +411,13 @@ export async function startBot() {
     }
   });
 
-  sock.ev.on('messages.upsert', ({ messages, type }) => handleUpsert(messages, type));
+  sock.ev.on('messages.upsert', ({ messages, type }) =>
+    handleUpsert(messages, type).catch((err) => console.error('[bot] message handler error:', err)),
+  );
+  sock.ev.on('lid-mapping.update', ({ lid, pn }) => linkAliases(jidNormalizedUser(lid), jidNormalizedUser(pn)));
 
   sock.ev.on('messaging-history.set', ({ messages }) => {
-    if (messages?.length) scanHistory(messages);
+    if (messages?.length) scanHistory(messages).catch((err) => console.error('[bot] history scan error:', err));
   });
 
   return sock;

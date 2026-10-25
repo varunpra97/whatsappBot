@@ -50,7 +50,7 @@ before(async () => {
 test('replies to a live wish with text', async () => {
   sent = [];
   writeConfig();
-  bot._test.upsert([wish('911111111111')], 'notify');
+  await bot._test.upsert([wish('911111111111')], 'notify');
   await bot._test.idle();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].content.text, 'Hi Asha');
@@ -59,7 +59,7 @@ test('replies to a live wish with text', async () => {
 test('sends the image with the reply as caption in 1:1 chats', async () => {
   sent = [];
   writeConfig({ replyImage: path.join(dir, 'thanks.jpg') });
-  bot._test.upsert([wish('912222222222')], 'notify');
+  await bot._test.upsert([wish('912222222222')], 'notify');
   await bot._test.idle();
   assert.equal(sent.length, 1);
   assert.ok(Buffer.isBuffer(sent[0].content.image));
@@ -69,7 +69,7 @@ test('sends the image with the reply as caption in 1:1 chats', async () => {
 test('falls back to text when the image file is missing', async () => {
   sent = [];
   writeConfig({ replyImage: path.join(dir, 'missing.jpg') });
-  bot._test.upsert([wish('913333333333')], 'notify');
+  await bot._test.upsert([wish('913333333333')], 'notify');
   await bot._test.idle();
   assert.equal(sent[0].content.text, 'Hi Asha');
 });
@@ -77,12 +77,12 @@ test('falls back to text when the image file is missing', async () => {
 test('ignores old wishes from history unless catch-up is on', async () => {
   sent = [];
   writeConfig();
-  bot._test.history([wish('914444444444', 40)]);
+  await bot._test.history([wish('914444444444', 40)]);
   await bot._test.idle();
   assert.equal(sent.length, 0);
 
   writeConfig({ catchUp: { enabled: true, lookbackHours: 72 } });
-  bot._test.history([wish('914444444444', 40)]);
+  await bot._test.history([wish('914444444444', 40)]);
   await bot._test.idle();
   assert.equal(sent.length, 1);
 });
@@ -90,7 +90,7 @@ test('ignores old wishes from history unless catch-up is on', async () => {
 test('catch-up skips wishes you already answered and ones outside the lookback', async () => {
   sent = [];
   writeConfig({ catchUp: { enabled: true, lookbackHours: 72 } });
-  bot._test.history([
+  await bot._test.history([
     wish('915555555555', 30),
     mine('915555555555', 29), // answered by hand
     wish('916666666666', 100), // too old
@@ -103,7 +103,7 @@ test('catch-up skips wishes you already answered and ones outside the lookback',
 test('catch-up respects maxReplies', async () => {
   sent = [];
   writeConfig({ catchUp: { enabled: true, lookbackHours: 72, maxReplies: 0 } });
-  bot._test.history([wish('918888888888', 5)]);
+  await bot._test.history([wish('918888888888', 5)]);
   await bot._test.idle();
   assert.equal(sent.length, 0);
 });
@@ -111,7 +111,7 @@ test('catch-up respects maxReplies', async () => {
 test('a burst of wishes from one person gets one reply', async () => {
   sent = [];
   writeConfig();
-  bot._test.upsert([wish('919999999999'), wish('919999999999', 0, 'HBD!!')], 'notify');
+  await bot._test.upsert([wish('919999999999'), wish('919999999999', 0, 'HBD!!')], 'notify');
   await bot._test.idle();
   assert.equal(sent.length, 1);
 });
@@ -121,10 +121,10 @@ test('onlyTodaysWishes skips wishes from yesterday', async () => {
   writeConfig({ onlyTodaysWishes: true, timezone: 'UTC', catchUp: { enabled: true, lookbackHours: 72 } });
   const now = new Date();
   const hoursSinceMidnight = now.getUTCHours() + now.getUTCMinutes() / 60;
-  bot._test.history([wish('920000000001', hoursSinceMidnight + 1)]); // yesterday
+  await bot._test.history([wish('920000000001', hoursSinceMidnight + 1)]); // yesterday
   await bot._test.idle();
   assert.equal(sent.length, 0);
-  bot._test.history([wish('920000000002', hoursSinceMidnight / 2)]); // earlier today
+  await bot._test.history([wish('920000000002', hoursSinceMidnight / 2)]); // earlier today
   await bot._test.idle();
   assert.equal(sent.length, 1);
 });
@@ -135,7 +135,7 @@ test('matches onlyNumbers for chats addressed by @lid', async () => {
   const msg = wish('x');
   msg.key.remoteJid = '123456789012345@lid';
   msg.key.remoteJidAlt = '919000000001@s.whatsapp.net';
-  bot._test.upsert([msg], 'notify');
+  await bot._test.upsert([msg], 'notify');
   await bot._test.idle();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].jid, '123456789012345@lid');
@@ -147,7 +147,31 @@ test('a manual reply under the phone-number address counts for the @lid chat', a
   const msg = wish('x', 3);
   msg.key.remoteJid = '223456789012345@lid';
   msg.key.remoteJidAlt = '919000000002@s.whatsapp.net';
-  bot._test.history([msg, mine('919000000002', 2)]);
+  await bot._test.history([msg, mine('919000000002', 2)]);
   await bot._test.idle();
   assert.equal(sent.length, 0);
+});
+
+test('no second reply when the same person shows up under @lid and phone number', async () => {
+  sent = [];
+  writeConfig();
+  const lid = '333456789012345@lid';
+  const pn = '919000000003@s.whatsapp.net';
+  fakeSock.signalRepository = {
+    lidMapping: {
+      getPNForLID: async (j) => (j === lid ? pn : null),
+      getLIDForPN: async (j) => (j === pn ? lid : null),
+    },
+  };
+  const first = wish('x', 0.5);
+  first.key.remoteJid = lid; // e.g. from chat history
+  await bot._test.upsert([first], 'notify');
+  await bot._test.idle();
+  assert.equal(sent.length, 1);
+
+  const second = wish('919000000003', 0, 'Happy bday!'); // later, addressed by phone number
+  await bot._test.upsert([second], 'notify');
+  await bot._test.idle();
+  assert.equal(sent.length, 1);
+  delete fakeSock.signalRepository;
 });
