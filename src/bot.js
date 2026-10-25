@@ -18,7 +18,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { AUTH_DIR, ROOT, getConfig, inBirthdayWindow, todayIn } from './config.js';
 import { isBirthdayWish, mentionsName } from './detector.js';
-import { alreadyRepliedToday, lastOutgoing, recordOutgoing, recordReply } from './state.js';
+import { alreadyRepliedToday, lastOutgoing, recentIncoming, recordOutgoing, recordReply, rememberIncoming } from './state.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'warn' });
 // The WhatsApp library logs routine decryption retries and timeouts as errors; hide them unless debugging.
@@ -287,7 +287,7 @@ async function sendReply({ msg, text, source }) {
 }
 
 /** Looks through chat history WhatsApp sends when the device links, for wishes that were never answered. */
-async function scanHistory(messages, { quiet = false } = {}) {
+async function scanHistory(messages, { quiet = false, label = 'chat history received' } = {}) {
   // Note every message we sent first, so wishes already answered in history are skipped.
   messages.forEach(noteOutgoing);
   const cfg = getConfig();
@@ -296,8 +296,10 @@ async function scanHistory(messages, { quiet = false } = {}) {
     .sort((a, b) => tsOf(a) - tsOf(b));
   const tally = {};
   const leftOut = [];
+  const skipped = [];
   for (const msg of candidates) {
     const text = messageText(msg.message);
+    if (!isJidGroup(msg.key.remoteJid)) rememberIncoming(msg, text);
     // Only birthday wishes are worth reporting; history also holds thousands of ordinary messages.
     if (!isBirthdayWish(text, cfg)) continue;
     await resolveAliases(msg);
@@ -314,11 +316,15 @@ async function scanHistory(messages, { quiet = false } = {}) {
       } else outcome = 'already queued';
     }
     if (outcome !== 'too old') tally[outcome] = (tally[outcome] || 0) + 1;
+    if (!['too old', 'groups disabled', 'queued for reply'].includes(outcome) && !outcome.startsWith('over ')) {
+      skipped.push(`  - ${msg.pushName || 'unknown'} (+${senderOf(msg)}): ${outcome} — "${text.slice(0, 60).replace(/\s+/g, ' ')}"`);
+    }
   }
   if (leftOut.length) console.log(`[bot] not answered (over catchUp.maxReplies), reply by hand: ${leftOut.join(', ')}`);
   if (quiet) return;
   const details = Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(', ');
-  console.log(`[bot] chat history received: ${messages.length} messages; birthday wishes in it: ${details || 'none to answer'}`);
+  console.log(`[bot] ${label}: ${messages.length} messages; birthday wishes in it: ${details || 'none to answer'}`);
+  if (skipped.length) console.log(`[bot] wishes not answered:\n${skipped.join('\n')}`);
 }
 
 // 'notify' = arrived now (including messages queued while offline); 'append' = synced from your phone.
@@ -326,7 +332,9 @@ async function handleUpsert(messages, type) {
   for (const msg of messages) {
     noteOutgoing(msg);
     if (type === 'notify') {
-      if (!msg.key.fromMe && isBirthdayWish(messageText(msg.message), getConfig())) await resolveAliases(msg);
+      const text = messageText(msg.message);
+      if (!msg.key.fromMe && !isJidGroup(msg.key.remoteJid)) rememberIncoming(msg, text);
+      if (!msg.key.fromMe && isBirthdayWish(text, getConfig())) await resolveAliases(msg);
       considerMessage(msg, 'live');
     } else if (type === 'append' && !msg.key.fromMe) await scanHistory([msg], { quiet: true });
   }
@@ -390,7 +398,12 @@ export async function startBot() {
       status.me = { id: jidNormalizedUser(sock.user.id), name: sock.user.name || '' };
       console.log(`[bot] connected as ${status.me.name} (${digits(status.me.id)})`);
       if (cfg.catchUp.enabled && !linkedThisRun) {
-        console.log('[bot] catch-up: WhatsApp only sends older chat history right after linking; re-link to scan earlier chats');
+        const saved = recentIncoming();
+        if (saved.length) {
+          scanHistory(saved, { label: 're-checked saved messages' }).catch((err) => console.error('[bot] re-check error:', err));
+        } else {
+          console.log('[bot] catch-up: WhatsApp only sends older chat history right after linking; re-link to scan earlier chats');
+        }
       }
     }
 

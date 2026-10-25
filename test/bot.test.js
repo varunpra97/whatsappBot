@@ -175,3 +175,18 @@ test('no second reply when the same person shows up under @lid and phone number'
   assert.equal(sent.length, 1);
   delete fakeSock.signalRepository;
 });
+
+test('saved 1:1 messages can be re-checked later with improved detection', async () => {
+  sent = [];
+  writeConfig({ catchUp: { enabled: true, lookbackHours: 24 } });
+  const { recentIncoming } = await import('../src/state.js');
+  const msg = wish('919000000004', 1, 'Janamdin ki hardik shubhkamnaye');
+  await bot._test.history([msg]);
+  await bot._test.idle();
+  const saved = recentIncoming().find((m) => m.key.id === msg.key.id);
+  assert.ok(saved, 'message was saved');
+  assert.equal(sent.length, 1); // recognised by the broader detection
+  await bot._test.history([saved]); // a later re-check doesn't reply twice
+  await bot._test.idle();
+  assert.equal(sent.length, 1);
+});

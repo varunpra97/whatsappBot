@@ -61,3 +61,47 @@ export function recordOutgoing(chatJid, ts) {
 export function getState() {
   return state;
 }
+
+// Recent incoming 1:1 text messages, kept so the bot can re-check them after a restart
+// or a detection fix (WhatsApp only sends chat history once, when the device links).
+const RECENT_PATH = path.join(DATA_DIR, 'recent-messages.json');
+const RECENT_KEEP_MS = 48 * 3600000;
+let recent = null;
+let recentTimer = null;
+
+function loadRecent() {
+  if (!recent) {
+    try {
+      recent = JSON.parse(fs.readFileSync(RECENT_PATH, 'utf8'));
+    } catch {
+      recent = {};
+    }
+  }
+  return recent;
+}
+
+export function rememberIncoming(msg, text) {
+  const ts = Number(msg.messageTimestamp || 0) * 1000;
+  if (!msg.key?.id || !text || !ts || Date.now() - ts > RECENT_KEEP_MS) return;
+  const { remoteJid, remoteJidAlt, senderPn, id } = msg.key;
+  loadRecent()[id] = {
+    key: { remoteJid, remoteJidAlt, senderPn, id, fromMe: false },
+    message: { conversation: text },
+    messageTimestamp: ts / 1000,
+    pushName: msg.pushName || '',
+  };
+  if (!recentTimer) {
+    recentTimer = setTimeout(() => {
+      recentTimer = null;
+      const cutoff = Date.now() - RECENT_KEEP_MS;
+      for (const [k, m] of Object.entries(recent)) if (m.messageTimestamp * 1000 < cutoff) delete recent[k];
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(RECENT_PATH, JSON.stringify(recent));
+    }, 5000);
+    recentTimer.unref?.();
+  }
+}
+
+export function recentIncoming() {
+  return Object.values(loadRecent());
+}

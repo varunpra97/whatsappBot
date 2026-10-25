@@ -103,6 +103,8 @@ With `"catchUp": { "enabled": true }` the bot also answers wishes from the last 
 - **Wishes that arrived while the bot was off** are delivered when it reconnects and get answered.
 - **Chat history from before the bot was linked:** WhatsApp sends recent history only once, at the moment you link. To scan it, enable catch-up first and then link (or re-link: stop the bot, `rm -rf auth`, start it and scan again).
 
+The bot also saves the last 48 hours of incoming 1:1 text messages in `data/recent-messages.json` and re-checks them every time it starts, so after an update or config change you only need to restart (not re-link) to pick up wishes it missed before. Each history scan prints the wishes it did not answer and why.
+
 A wish is skipped if you have already sent anything in that chat after it, so wishes you answered by hand don't get a second reply. Old wishes are answered one at a time, with the normal `replyDelaySeconds` gap between them; new wishes go first.
 
 ## Useful commands

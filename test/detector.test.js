@@ -63,3 +63,23 @@ test('birthday window', () => {
 test('fillTemplate', () => {
   assert.equal(fillTemplate('Thanks {name}! {unknown}', { name: 'Asha' }), 'Thanks Asha! {unknown}');
 });
+
+const moreWishes = [
+  'Janamdin ki hardik shubhkamnaye',
+  'जन्मदिवस की हार्दिक शुभकामनाएं',
+  'Heartiest congratulations on your birthday',
+  'Best wishes on your birthday sir',
+  'God bless you on your birthday',
+  'Shubh janmdin',
+  'Hardik shubhkamnaye',
+  'Warm wishes on your special day',
+  'Wishing you many more happy years',
+];
+const moreNonWishes = [
+  'Diwali ki hardik shubhkamnaye',
+  'hardik shubhkamnaye on your promotion',
+  'my son birthday party is tomorrow',
+  'Is it your birthday today?',
+];
+for (const w of moreWishes) test(`detects: ${w}`, () => assert.equal(isBirthdayWish(w), true));
+for (const w of moreNonWishes) test(`ignores: ${w}`, () => assert.equal(isBirthdayWish(w), false));
