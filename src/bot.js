@@ -98,7 +98,7 @@ function linkAliases(a, b) {
 // Unknown mappings are fetched from WhatsApp's servers, which can stall for a minute during the initial sync.
 const LOOKUP_TIMEOUT_MS = 2000;
 const withTimeout = (promise) =>
-  Promise.race([promise, new Promise((resolve) => setTimeout(resolve, LOOKUP_TIMEOUT_MS, null).unref?.())]);
+  Promise.race([promise, new Promise((resolve) => setTimeout(resolve, LOOKUP_TIMEOUT_MS, null))]);
 
 /** Looks up the other id for a 1:1 chat in WhatsApp's lid/phone mapping. */
 async function resolveAliases(msg) {
