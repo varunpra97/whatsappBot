@@ -1,0 +1,23 @@
+[Unit]
+Description=WhatsApp Birthday Auto-Reply Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wabot
+Group=wabot
+WorkingDirectory=/opt/whatsapp-bot
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=LOG_LEVEL=warn
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/whatsapp-bot
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,39 @@
+{
+  "enabled": true,
+  "myNames": ["Varun"],
+  "birthday": "",
+  "activeWindowDays": 2,
+  "timezone": "Asia/Kolkata",
+
+  "replyInPrivate": true,
+  "replyInGroups": true,
+  "groupRequireMention": true,
+  "oncePerChatPerDay": true,
+  "replyDelaySeconds": [5, 30],
+  "maxMessageAgeHours": 24,
+  "markAsRead": true,
+  "reaction": "❤️",
+  "emojiOnlyCounts": true,
+
+  "extraKeywords": [],
+  "ignoreNumbers": [],
+  "onlyNumbers": [],
+
+  "replies": [
+    "Thank you so much {name}! 😊🎉",
+    "Thanks a lot {name}! Means a lot 🙏❤️",
+    "Thank you {name}! 🥳 Really appreciate the wishes!"
+  ],
+  "groupReplies": [
+    "Thank you {name}! 😊🎂"
+  ],
+
+  "pairingPhoneNumber": "",
+
+  "web": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 3000,
+    "password": "change-me"
+  }
+}
