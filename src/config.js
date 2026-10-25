@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const CONFIG_PATH = process.env.BOT_CONFIG || path.join(ROOT, 'config.json');
 export const DATA_DIR = process.env.BOT_DATA_DIR || path.join(ROOT, 'data');
 export const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(ROOT, 'auth');
