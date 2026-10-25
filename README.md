@@ -66,6 +66,7 @@ Edit the config in the dashboard, or with `sudo nano /opt/whatsapp-bot/config.js
 | `oncePerChatPerDay` | `true` | One reply per person per day. |
 | `replyDelaySeconds` | `[5, 30]` | Random delay range before replying. |
 | `maxMessageAgeHours` | `24` | Ignore older messages (e.g. backlog delivered after downtime). |
+| `onlyTodaysWishes` | `false` | Only answer wishes sent today (calendar day in `timezone`), including ones caught up from history. |
 | `markAsRead` | `true` | Send blue ticks for wishes. |
 | `reaction` | `"❤️"` | Emoji reaction on each wish (`""` to disable). |
 | `emojiOnlyCounts` | `true` | Treat messages like "🎂🎉" as wishes. |

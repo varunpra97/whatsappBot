@@ -108,6 +108,7 @@ function skipReason(msg, cfg, text) {
 
   const ts = tsOf(msg);
   if (ts && Date.now() - ts > maxAgeMs(cfg)) return 'too old';
+  if (cfg.onlyTodaysWishes && ts && todayIn(cfg.timezone, new Date(ts)) !== todayIn(cfg.timezone)) return 'not from today';
   if (!inBirthdayWindow(cfg, ts ? new Date(ts) : new Date())) return 'outside birthday window';
 
   const sender = senderOf(msg);

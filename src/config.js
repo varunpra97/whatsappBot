@@ -19,6 +19,7 @@ export const DEFAULTS = {
   oncePerChatPerDay: true,
   replyDelaySeconds: [5, 30],
   maxMessageAgeHours: 24,
+  onlyTodaysWishes: false,
   markAsRead: true,
   reaction: '❤️',
   emojiOnlyCounts: true,

@@ -115,3 +115,16 @@ test('a burst of wishes from one person gets one reply', async () => {
   await bot._test.idle();
   assert.equal(sent.length, 1);
 });
+
+test('onlyTodaysWishes skips wishes from yesterday', async () => {
+  sent = [];
+  writeConfig({ onlyTodaysWishes: true, timezone: 'UTC', catchUp: { enabled: true, lookbackHours: 72 } });
+  const now = new Date();
+  const hoursSinceMidnight = now.getUTCHours() + now.getUTCMinutes() / 60;
+  bot._test.history([wish('920000000001', hoursSinceMidnight + 1)]); // yesterday
+  await bot._test.idle();
+  assert.equal(sent.length, 0);
+  bot._test.history([wish('920000000002', hoursSinceMidnight / 2)]); // earlier today
+  await bot._test.idle();
+  assert.equal(sent.length, 1);
+});
